@@ -29,7 +29,7 @@ namespace ImportHelper
       }
 
       string filePattern = arguments["FilePattern"];
-      char delimiter = arguments["Delimiter"][0];
+      char delimiter = ParseDelimiter(arguments["Delimiter"]);
 
       // Extract directory and file filter from the pattern
       string directoryPath = Path.GetDirectoryName(filePattern);
@@ -145,6 +145,25 @@ namespace ImportHelper
         ShowHelpMessage();
 
       return retval;
+    }
+
+    // No shell interprets \t, \n, \r inside a quoted argument as an actual
+    // control character, so accept them as a literal two-character escape
+    // instead of silently taking the backslash as the delimiter.
+    private static char ParseDelimiter(string raw)
+    {
+      if (raw.Length == 2 && raw[0] == '\\')
+      {
+        switch (raw[1])
+        {
+          case 't': return '\t';
+          case 'n': return '\n';
+          case 'r': return '\r';
+          case '\\': return '\\';
+        }
+      }
+
+      return raw[0];
     }
 
     private static void ParseArguments(string[] args, Dictionary<string, string> arguments)

@@ -38,7 +38,7 @@ ImportHelper -FilePattern <file_pattern> -Delimiter <delimiter>
 | Option | Description |
 | --- | --- |
 | `-FilePattern <file_pattern>` | **Required.** File pattern with optional wildcards (e.g. `C:\data\*.csv`, `*.txt`, `\\server\share\file.txt`). If no directory is given, the current directory is used. |
-| `-Delimiter <delimiter>` | **Required.** Field delimiter character (e.g. `,`, `;`, `\t`, `\|`). Use `\t` for tab. |
+| `-Delimiter <delimiter>` | **Required.** Field delimiter character (e.g. `,`, `;`, `\|`). Also accepts the literal two-character escapes `\t`, `\n`, `\r`, and `\\` for control characters no shell will type directly. |
 | `-HasHeader` | First row of each file contains column headers, used as column names in the analysis report and generated T-SQL (after sanitization). |
 | `-Encoding <encoding_name>` | Character encoding of the input files (e.g. `UTF-8`, `ASCII`, `UTF-16`, `ISO-8859-1`). Defaults to `UTF-8`. |
 | `-GenerateTsql [<output_prefix>]` | Generate a T-SQL `CREATE TABLE` script (`<prefix><filename>_CreateTable.sql`) plus a ready-to-run `bcp` command, printed to the console as well. The command's `-c`/`-w` mode and code page are derived from the encoding actually used to read the file, and `-F 2` is included automatically when `-HasHeader` was specified. |
@@ -108,3 +108,12 @@ ImportHelper -FilePattern "*.csv" -Delimiter "," -HasHeader -PrepareForBcp "_"
 - For numeric columns, the utility attempts to distinguish between integer (`INT`) and floating-point (`FLOAT`) types.
 - String column lengths in generated T-SQL are rounded up to the next size step (10, 50, 100, 255, 500, 1000, `MAX`).
 - BCP format files use generic SQL Server data types (`SQLCHAR`, `SQLFLT8`, `SQLDATETIME`).
+
+## Cross-platform notes
+
+ImportHelper runs on Linux and macOS as well as Windows — it targets .NET 8 with no platform-specific APIs, so `dotnet build`/`dotnet run` work unchanged. A few things to be aware of:
+
+- Row parsing already treats `\r\n`, standalone `\n`, and standalone `\r` all as valid row terminators, including files that mix line-ending styles. No special flag is needed for LF- vs. CRLF-terminated input.
+- `-PrepareForBcp` always writes `\r\n` row terminators in its output, regardless of the host OS, since that matches `bcp`'s own default row-terminator convention rather than the platform's.
+- File patterns use forward slashes on Linux/macOS (e.g. `/opt/import/*.dat`) instead of backslashes, and filename matching is case-sensitive there — `*.CSV` will not match `data.csv` the way it does on Windows.
+- `-Encoding` values beyond `UTF-8`, `UTF-16`, `UTF-32`, `ASCII`, and Latin-1/`ISO-8859-1` (e.g. legacy Windows code pages like `Windows-1252`) require registering `System.Text.Encoding.CodePages` in code — this is a .NET runtime limitation on every platform, not something specific to Linux.
