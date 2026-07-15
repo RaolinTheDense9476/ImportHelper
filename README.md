@@ -118,6 +118,9 @@ ImportHelper runs on Linux and macOS as well as Windows — it targets .NET 8 wi
 - File patterns use forward slashes on Linux/macOS (e.g. `/opt/import/*.dat`) instead of backslashes, and filename matching is case-sensitive there — `*.CSV` will not match `data.csv` the way it does on Windows.
 - `-Encoding` values beyond `UTF-8`, `UTF-16`, `UTF-32`, `ASCII`, and Latin-1/`ISO-8859-1` (e.g. legacy Windows code pages like `Windows-1252`) require registering `System.Text.Encoding.CodePages` in code — this is a .NET runtime limitation on every platform, not something specific to Linux.
 
+##AI Disclosure:
+Yes, I used AI to generate a lot of this. I had written a similar utility years back and the code was lost in a version control migration, so when I recreated it I applied many lessons learned over years of imports and had AI streamline the process. Do with that what you will. 
+
 ## License
 
 [MIT](LICENSE)
