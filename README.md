@@ -117,3 +117,7 @@ ImportHelper runs on Linux and macOS as well as Windows — it targets .NET 8 wi
 - `-PrepareForBcp` always writes `\r\n` row terminators in its output, regardless of the host OS, since that matches `bcp`'s own default row-terminator convention rather than the platform's.
 - File patterns use forward slashes on Linux/macOS (e.g. `/opt/import/*.dat`) instead of backslashes, and filename matching is case-sensitive there — `*.CSV` will not match `data.csv` the way it does on Windows.
 - `-Encoding` values beyond `UTF-8`, `UTF-16`, `UTF-32`, `ASCII`, and Latin-1/`ISO-8859-1` (e.g. legacy Windows code pages like `Windows-1252`) require registering `System.Text.Encoding.CodePages` in code — this is a .NET runtime limitation on every platform, not something specific to Linux.
+
+## License
+
+[MIT](LICENSE)
