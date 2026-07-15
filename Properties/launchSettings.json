@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "ImportHelper": {
+      "commandName": "Project",
+      "commandLineArgs": "-FilePattern \"C:\\data\\*.csv\" -Delimiter \",\" -HasHeader -GenerateTsql -GenerateBcpFormat"
+    }
+  }
+}

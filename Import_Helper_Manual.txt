@@ -1,0 +1,185 @@
+IMPORTHELPER(1)             General Commands Manual            IMPORTHELPER(1)
+
+NAME
+       ImportHelper - Analyze delimited text files and optionally generate
+       T-SQL table creation scripts and BCP format files.
+
+SYNOPSIS
+       ImportHelper -FilePattern <file_pattern> -Delimiter <delimiter>
+                  [-HasHeader] [-Encoding <encoding_name>]
+                  [-GenerateTsql [<output_prefix>]]
+                  [-GenerateBcpFormat [<output_prefix>]]
+                  [-AllowEmbeddedNewlines]
+                  [-ForceQuotedAsString]
+                  [-PrepareForBcp [<replacement_value>]]
+
+DESCRIPTION
+       ImportHelper is a command-line utility that analyzes delimited text
+       files (e.g., CSV, TSV) matching a file pattern. It infers the data
+       type and maximum length for each column by scanning the entire
+       contents of the files. Optionally, it can generate a T-SQL table
+       creation script and/or a BCP (Bulk Copy Program) format file for each
+       input file to facilitate easy import into Microsoft SQL Server.
+
+OPTIONS
+       -FilePattern <file_pattern>
+           Required. A file pattern with optional wildcards identifying
+           which files to process (e.g., C:\data\*.csv, *.txt,
+           data\file.csv, \\server\share\file.txt). If no directory is
+           given, the current directory is used.
+
+       -Delimiter <delimiter>
+           Required. The character used to separate columns within the text
+           files. Common delimiters include comma (,), semicolon (;), tab
+           (\t), and pipe (|). For tab, use `\t`.
+
+       -HasHeader
+           An optional flag indicating that the first row of each input file
+           contains column headers. If specified, these headers will be used
+           as column names in the analysis report and the generated T-SQL
+           script (after sanitization).
+
+       -Encoding <encoding_name>
+           An optional parameter specifying the character encoding of the input
+           files. <encoding_name> should be a standard encoding name
+           recognized by .NET (e.g., UTF-8, ASCII, UTF-16, ISO-8859-1). If
+           this option is not provided, the utility defaults to UTF-8 encoding.
+
+       -GenerateTsql [<output_prefix>]
+           An optional flag to generate a T-SQL table creation script for each
+           processed input file. The script will be saved in the same
+           directory as the input file, with a filename like
+           `<output_prefix><filename>_CreateTable.sql`. If <output_prefix> is
+           provided, it will be prepended to the table name in the script. If
+           no <output_prefix> is specified, a default prefix based on the
+           input filename will be used. The script includes a basic
+           `CREATE TABLE` statement with inferred data types (INT, FLOAT,
+           DATETIME, VARCHAR(n), VARCHAR(MAX)) and a commented-out example
+           BCP command. The example command's character-mode flags (-c with
+           the file's actual code page, or -w for UTF-16) are derived from
+           the -Encoding actually used to read the file, and -F 2 is
+           included automatically when -HasHeader was specified.
+
+       -GenerateBcpFormat [<output_prefix>]
+           An optional flag to generate a BCP format file for each processed
+           input file. The format file will be saved in the same directory as
+           the input file, with a filename like `<output_prefix><filename>.fmt`.
+           If <output_prefix> is provided, it will be prepended to the format
+           file name. If no <output_prefix> is specified, a default prefix
+           based on the input filename will be used. The format file can be
+           used with the SQL Server `bcp` utility for efficient bulk import.
+
+       -AllowEmbeddedNewlines
+           By default, ImportHelper prints a warning for any row containing a
+           quoted field with an embedded newline, since many import tools
+           (e.g., native bcp) do not handle embedded newlines within a field
+           correctly. Pass this flag to suppress that warning when the
+           downstream import is known to handle it.
+
+       -ForceQuotedAsString
+           By default, a quoted value is still eligible for Numeric/Date
+           inference, since some exports quote every field indiscriminately.
+           Pass this flag to always treat a quoted value as an explicit
+           signal that the source considers the column text, forcing that
+           column to String regardless of what the quoted values look like.
+
+       -PrepareForBcp [<replacement_value>]
+           An optional flag to write a companion file named
+           `bcp_<filename>` alongside each processed input file, rewritten
+           to be safe for a plain `bcp -c` import. Native bcp has no concept
+           of CSV quoting: it splits purely on the raw delimiter byte and
+           passes quote characters through literally, so a value that was
+           quoted specifically to contain the delimiter or a newline (or a
+           value that was simply quoted for no structural reason, e.g. a
+           quoted numeric amount) breaks a straight bcp import. This option
+           strips the quoting from every field and replaces any delimiter
+           character or newline that was protected inside a quoted value
+           with <replacement_value> (default: a single space), so the
+           resulting file always has the same number of delimiters per row
+           and can be bulk-copied with the same -t delimiter, no quote
+           handling required.
+
+QUOTING AND ESCAPING
+       ImportHelper parses delimited fields using standard CSV-style
+       quoting. A field may be wrapped in double quotes (") to contain the
+       delimiter character or a literal newline. A literal double quote
+       inside a quoted field is escaped by doubling it (""). A quote is only
+       treated as opening a quoted field when it is the first character of
+       the field; a quote appearing mid-field is treated as a literal
+       character.
+
+       Whitespace inside a quoted field is preserved as-is (not trimmed) when
+       computing the column's maximum length, since quoting is often used
+       specifically to protect meaningful leading/trailing whitespace.
+       Values are still trimmed before being evaluated for Numeric/Date
+       type inference, whether or not they were quoted.
+
+OUTPUT
+       ImportHelper will print a column analysis report to the console for each
+       processed file. This report includes the inferred data type (String,
+       Numeric, Date) and the maximum length (for String columns) for each
+       column in the file.
+
+       If a row's quoted field contains an embedded newline, a warning is
+       printed for that row unless -AllowEmbeddedNewlines was specified.
+
+       If the `-GenerateTsql` option is used, a `.sql` file will be created
+       for each input file containing a T-SQL `CREATE TABLE` script.
+
+       If the `-GenerateBcpFormat` option is used, a `.fmt` file will be
+       created for each input file containing a BCP format definition.
+
+       If the `-PrepareForBcp` option is used, a `bcp_<filename>` file will
+       be created for each input file, safe for a plain bcp import with the
+       same delimiter.
+
+EXAMPLES
+       Analyze all CSV files in the "DataFiles" directory using a comma as
+       the delimiter and assuming the first row is a header:
+              ImportHelper -FilePattern "DataFiles\*.csv" -Delimiter "," -HasHeader
+
+       Analyze all tab-separated text files in the current directory, using
+       UTF-16 encoding, and generate T-SQL scripts with the prefix "staging_":
+              ImportHelper -FilePattern "*.txt" -Delimiter "\t" -Encoding "UTF-16" -GenerateTsql staging_
+
+       Analyze all pipe-separated data files in the "/opt/import" directory
+       and generate BCP format files with the prefix "load_":
+              ImportHelper -FilePattern "/opt/import/*.dat" -Delimiter "|" -GenerateBcpFormat load_
+
+       Analyze CSV files without a header and generate both T-SQL and BCP
+       format files using default prefixes:
+              ImportHelper -FilePattern "DataFiles\*.csv" -Delimiter "," -GenerateTsql -GenerateBcpFormat
+
+       Analyze a quoted export where every field is quoted regardless of
+       type, and suppress warnings about embedded newlines inside quoted
+       notes fields:
+              ImportHelper -FilePattern "*.csv" -Delimiter "," -HasHeader -AllowEmbeddedNewlines
+
+       Analyze a file where quoting should always mean "this is text", even
+       for quoted values that look numeric or date-like:
+              ImportHelper -FilePattern "*.csv" -Delimiter "," -HasHeader -ForceQuotedAsString
+
+       Prepare a quoted CSV for a plain bcp import, replacing any
+       delimiter/newline that was inside quotes with an underscore instead
+       of the default space:
+              ImportHelper -FilePattern "*.csv" -Delimiter "," -HasHeader -PrepareForBcp "_"
+
+NOTES
+       - The utility scans the entire content of each file to accurately
+         determine data types and maximum string lengths.
+       - For numeric columns in T-SQL scripts, the utility attempts to
+         distinguish between integer (INT) and floating-point (FLOAT) types.
+       - String column lengths in T-SQL scripts are set to the next order of
+         magnitude based on the maximum length found (steps of 10, 50, 100,
+         255, 500, 1000, MAX).
+       - BCP format files use generic SQL Server data types (e.g., SQLCHAR,
+         SQLFLT8, SQLDATETIME).
+
+SEE ALSO
+       bcp(1), sqlcmd(1)
+
+VERSION
+       1.2 (July 2026)
+
+AUTHOR
+       David Barr, with Gemini assistance
