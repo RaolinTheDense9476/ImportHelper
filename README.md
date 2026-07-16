@@ -10,7 +10,13 @@ A command-line utility that analyzes delimited text files (CSV, TSV, etc.) and o
 - Generates BCP format files (for targets that define one)
 - `-PrepareForBcp` rewrites a file to be safe for a plain `bcp -c` import, which has no CSV-quoting awareness of its own
 
+## Download
+
+Prebuilt, self-contained binaries (no .NET runtime required) for Windows, Linux, and macOS (x64 and arm64) are attached to each [GitHub Release](https://github.com/RaolinTheDense9476/ImportHelper/releases/latest).
+
 ## Requirements
+
+Only needed if you're building from source rather than using a prebuilt binary above:
 
 - .NET 8 SDK to build and run
 - The `bcp` utility and a SQL Server instance if you intend to use the generated import commands
