@@ -9,7 +9,7 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- `ImportHelper.Gui`: a cross-platform desktop GUI ([Avalonia](https://avaloniaui.net/)), exposing the same options as the CLI as form fields, with a log pane, a completion popup showing each file's column analysis (name/type/max length), and automatic output-folder opening once the popup is dismissed. Runs identically on Windows, Linux, and macOS from one codebase. Unlike the CLI's `-HasHeader` (which defaults off), the GUI's "First row has column headers" checkbox defaults checked — leaving it off on a file that does have a header row treats the header text as a data row, which fails numeric/date parsing and makes every column infer as `String`.
+- `ImportHelper.Gui`: a cross-platform desktop GUI ([Avalonia](https://avaloniaui.net/)), exposing the same options as the CLI as form fields, with a log pane, a completion popup showing each file's column analysis (name/type/max length), and automatic output-folder opening once the popup is dismissed. Runs identically on Windows, Linux, and macOS from one codebase. Unlike the CLI's `-HasHeader` (which defaults off), the GUI's "First row has column headers" checkbox defaults checked — leaving it off on a file that does have a header row treats the header text as a data row, which fails numeric/date parsing and makes every column infer as `String`. A checkbox next to the file pattern's Browse button switches it between picking a single file or a whole folder.
 
 ### Changed
 
