@@ -1,13 +1,13 @@
 # ImportHelper
 
-A command-line utility that analyzes delimited text files (CSV, TSV, etc.) and optionally generates T-SQL table creation scripts, BCP format files, and bcp-ready cleaned copies for importing into Microsoft SQL Server.
+A command-line utility that analyzes delimited text files (CSV, TSV, etc.) and optionally generates a `CREATE TABLE` script, a bulk-import command, and bcp-ready cleaned copies for importing into a database. The target database/bulk-import tool is a YAML definition, not hardcoded — Microsoft SQL Server ships as the built-in reference target, but you can add another database system or import mechanism without touching the C# code.
 
 ## Features
 
 - Infers each column's data type (`String`, `Numeric`, `Date`) and maximum length by scanning the entire file
 - Standard CSV-style quoting support: quoted fields, `""` escaping, and delimiters/newlines embedded inside quotes
-- Generates a `CREATE TABLE` T-SQL script with inferred types, plus a ready-to-run `bcp` command
-- Generates BCP format files
+- Generates a `CREATE TABLE` script with inferred types, plus a ready-to-run bulk-import command — both driven by a swappable [target definition](#database-targets)
+- Generates BCP format files (for targets that define one)
 - `-PrepareForBcp` rewrites a file to be safe for a plain `bcp -c` import, which has no CSV-quoting awareness of its own
 
 ## Requirements
@@ -26,6 +26,7 @@ dotnet build
 ```
 ImportHelper -FilePattern <file_pattern> -Delimiter <delimiter>
              [-HasHeader] [-Encoding <encoding_name>]
+             [-Target <name_or_path>]
              [-GenerateTsql [<output_prefix>]]
              [-GenerateBcpFormat [<output_prefix>]]
              [-AllowEmbeddedNewlines]
@@ -39,10 +40,11 @@ ImportHelper -FilePattern <file_pattern> -Delimiter <delimiter>
 | --- | --- |
 | `-FilePattern <file_pattern>` | **Required.** File pattern with optional wildcards (e.g. `C:\data\*.csv`, `*.txt`, `\\server\share\file.txt`). If no directory is given, the current directory is used. |
 | `-Delimiter <delimiter>` | **Required.** Field delimiter character (e.g. `,`, `;`, `\|`). Also accepts the literal two-character escapes `\t`, `\n`, `\r`, and `\\` for control characters no shell will type directly. |
-| `-HasHeader` | First row of each file contains column headers, used as column names in the analysis report and generated T-SQL (after sanitization). |
+| `-HasHeader` | First row of each file contains column headers, used as column names in the analysis report and generated `CREATE TABLE` script (after sanitization). |
 | `-Encoding <encoding_name>` | Character encoding of the input files (e.g. `UTF-8`, `ASCII`, `UTF-16`, `ISO-8859-1`). Defaults to `UTF-8`. |
-| `-GenerateTsql [<output_prefix>]` | Generate a T-SQL `CREATE TABLE` script (`<prefix><filename>_CreateTable.sql`) plus a ready-to-run `bcp` command, printed to the console as well. The command's `-c`/`-w` mode and code page are derived from the encoding actually used to read the file, and `-F 2` is included automatically when `-HasHeader` was specified. |
-| `-GenerateBcpFormat [<output_prefix>]` | Generate a BCP format file (`<prefix><filename>.fmt`) for use with the `bcp` utility. |
+| `-Target <name_or_path>` | Which [target definition](#database-targets) to use. Either a bundled name (looks for `targets/<name>.yaml` next to the executable) or a path to a custom YAML file. Defaults to `mssql`. |
+| `-GenerateTsql [<output_prefix>]` | Generate a `CREATE TABLE` script (`<prefix><filename>_CreateTable.sql`) plus a ready-to-run bulk-import command for the selected target, printed to the console as well. |
+| `-GenerateBcpFormat [<output_prefix>]` | Generate a bcp format file (`<prefix><filename>.fmt`), if the selected target defines one. |
 | `-AllowEmbeddedNewlines` | Suppress the warning printed when a quoted field contains an embedded newline. Many import tools, including native `bcp`, don't handle this correctly. |
 | `-ForceQuotedAsString` | Always treat quoted values as `String`, instead of the default of still attempting Numeric/Date inference on them. Useful when quoting is a deliberate "this is text" signal from the source. |
 | `-PrepareForBcp [<replacement_value>]` | Write a `bcp_<filename>` copy with quoting stripped and any delimiter/newline that was protected inside quotes replaced with `<replacement_value>` (default: a single space). See [Why -PrepareForBcp?](#why--preparefor-bcp) below. |
@@ -55,6 +57,27 @@ ImportHelper parses delimited fields using standard CSV-style quoting:
 - A literal double quote inside a quoted field is escaped by doubling it (`""`).
 - A quote only opens a quoted field when it's the first character of the field; a quote appearing mid-field is treated as a literal character.
 - Whitespace inside a quoted field is preserved (not trimmed) when computing `MaxLength`, since quoting is often used specifically to protect meaningful leading/trailing whitespace. Values are still trimmed before being evaluated for Numeric/Date inference, whether or not they were quoted.
+
+## Database targets
+
+What's genuinely *data* (type names, identifier quoting, the command template) lives in a YAML file per target; what's genuinely *behavior* (parsing the file, figuring out if a numeric column is really an integer) stays in code. [`targets/mssql.yaml`](targets/mssql.yaml) is the reference implementation — SQL Server isn't special-cased in C#, it's just the target that ships by default.
+
+A target definition has these sections:
+
+| Section | Purpose |
+| --- | --- |
+| `identifierQuote.prefix` / `.suffix` | Wraps a generated column/table name, e.g. `[` / `]` for SQL Server, `"` / `"` for Postgres. |
+| `typeMapping.integer` / `.float` / `.date` | The type name to emit for each of those inferred kinds. |
+| `typeMapping.string` | An ordered list of `{maxLength, type}` rules; the first entry whose `maxLength` is omitted or `>=` the column's actual max length wins — put the catch-all (no `maxLength`) last. |
+| `createTable.template` | The whole `CREATE TABLE` statement, with `{tableName}` and `{columns}` placeholders. |
+| `createTable.columnTemplate` / `.columnSeparator` | How each column line is rendered (`{quotedName}`, `{type}`) and how lines are joined. |
+| `bulkImport.commandTemplate` | The bulk-import command line, with `{table}`, `{filePath}`, `{delimiterEscaped}`, `{encodingFlags}`, `{headerFlag}` placeholders. |
+| `bulkImport.headerFlagWhenHasHeader` | Text substituted into `{headerFlag}` when `-HasHeader` was passed (empty otherwise). |
+| `bulkImport.encodingRules` / `.defaultEncodingFlagsTemplate` | Ordered `{matchCodePage, flags}` rules substituted into `{encodingFlags}`; falls back to the default template (`{codePage}` placeholder) when nothing matches. This is how `mssql.yaml` picks bcp's `-w` for UTF-16 vs. `-c -C <codepage>` for everything else. |
+| `bulkImport.notesTemplate` / `.headerNoteWhenHasHeader` | Optional trailing comment line in the generated script (`{encodingName}`, `{codePage}`, `{headerNote}` placeholders). Leave `notesTemplate` empty to omit it entirely. |
+| `bcpFormatFile` | Optional. Only meaningful for targets with an analogous format-file step (bcp's `.fmt` file); omit this section entirely for targets that don't have one, and `-GenerateBcpFormat` will say so instead of generating anything. |
+
+To add a new target, copy `targets/mssql.yaml`, adjust it for your database/tool's conventions, and either drop it in `targets/<name>.yaml` next to the executable or pass `-Target <path-to-file.yaml>` directly — no rebuild required.
 
 ## Why `-PrepareForBcp`?
 
@@ -102,12 +125,17 @@ Prepare a quoted CSV for a plain bcp import, replacing protected delimiters/newl
 ImportHelper -FilePattern "*.csv" -Delimiter "," -HasHeader -PrepareForBcp "_"
 ```
 
+Generate a `CREATE TABLE` script and bulk-import command for a custom target instead of the built-in `mssql`:
+```
+ImportHelper -FilePattern "*.csv" -Delimiter "," -HasHeader -Target "path\to\postgres.yaml" -GenerateTsql
+```
+
 ## Notes
 
 - The utility scans the entire content of each file to accurately determine data types and maximum string lengths.
-- For numeric columns, the utility attempts to distinguish between integer (`INT`) and floating-point (`FLOAT`) types.
-- String column lengths in generated T-SQL are rounded up to the next size step (10, 50, 100, 255, 500, 1000, `MAX`).
-- BCP format files use generic SQL Server data types (`SQLCHAR`, `SQLFLT8`, `SQLDATETIME`).
+- For numeric columns, the utility attempts to distinguish between integer and floating-point types (`INT`/`FLOAT` in the default `mssql` target — the actual names come from the target's `typeMapping`).
+- String column lengths are rounded up to the next size step defined in the target's `typeMapping.string` list (10, 50, 100, 255, 500, 1000, `MAX` for the default `mssql` target).
+- The default `mssql` target's bcp format files use generic SQL Server data types (`SQLCHAR`, `SQLFLT8`, `SQLDATETIME`).
 
 ## Cross-platform notes
 
@@ -117,6 +145,10 @@ ImportHelper runs on Linux and macOS as well as Windows — it targets .NET 8 wi
 - `-PrepareForBcp` always writes `\r\n` row terminators in its output, regardless of the host OS, since that matches `bcp`'s own default row-terminator convention rather than the platform's.
 - File patterns use forward slashes on Linux/macOS (e.g. `/opt/import/*.dat`) instead of backslashes, and filename matching is case-sensitive there — `*.CSV` will not match `data.csv` the way it does on Windows.
 - `-Encoding` values beyond `UTF-8`, `UTF-16`, `UTF-32`, `ASCII`, and Latin-1/`ISO-8859-1` (e.g. legacy Windows code pages like `Windows-1252`) require registering `System.Text.Encoding.CodePages` in code — this is a .NET runtime limitation on every platform, not something specific to Linux.
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 

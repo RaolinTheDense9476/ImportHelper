@@ -1,0 +1,71 @@
+# Reference target definition for Microsoft SQL Server. This encodes exactly
+# what ImportHelper used to have hardcoded in C# for -GenerateTsql,
+# -GenerateBcpFormat, and the bcp command it prints/comments. Use this file
+# as the template for adding another database system or bulk-import tool.
+
+name: mssql
+displayName: Microsoft SQL Server
+
+# Wraps a generated identifier, e.g. columnName -> [columnName]
+identifierQuote:
+  prefix: "["
+  suffix: "]"
+
+typeMapping:
+  integer: INT
+  float: FLOAT
+  date: DATETIME
+  # Matched top to bottom; the first entry whose maxLength is null or >=
+  # the column's actual max length wins. The last entry should omit
+  # maxLength to act as the catch-all.
+  string:
+    - maxLength: 10
+      type: VARCHAR(10)
+    - maxLength: 50
+      type: VARCHAR(50)
+    - maxLength: 100
+      type: VARCHAR(100)
+    - maxLength: 255
+      type: VARCHAR(255)
+    - maxLength: 500
+      type: VARCHAR(500)
+    - maxLength: 1000
+      type: VARCHAR(1000)
+    - type: VARCHAR(MAX)
+
+createTable:
+  template: |-
+    CREATE TABLE {tableName} (
+    {columns}
+    );
+  columnTemplate: "    {quotedName} {type}"
+  columnSeparator: ",\n"
+
+bulkImport:
+  # Placeholders: {table} {filePath} {delimiterEscaped} {encodingFlags} {headerFlag}
+  commandTemplate: >-
+    bcp {table} in "{filePath}" {encodingFlags} -t"{delimiterEscaped}" -T{headerFlag} -S <servername> -d <dbname>
+  headerFlagWhenHasHeader: " -F 2"
+  # Matched top to bottom by exact code page; falls back to
+  # defaultEncodingFlagsTemplate ({codePage} placeholder) when nothing matches.
+  encodingRules:
+    - matchCodePage: 1200 # UTF-16 (.NET's Encoding.Unicode) - bcp's native wide-char mode
+      flags: "-w"
+  defaultEncodingFlagsTemplate: "-c -C {codePage}"
+  notesTemplate: "(Assuming Windows Authentication. {encodingName} (code page {codePage}) is the encoding detected for this file{headerNote}.)"
+  headerNoteWhenHasHeader: "; -F 2 skips the header row"
+
+# Optional: not every bulk-import mechanism has an analogous format-file step.
+# This one is specific to SQL Server's bcp utility.
+bcpFormatFile:
+  version: "12.0"
+  numeric:
+    sqlType: SQLFLT8
+    length: 8
+  date:
+    sqlType: SQLDATETIME
+    length: 8
+  string:
+    sqlType: SQLCHAR
+    lengthFromMaxLength: true
+    minLength: 8000

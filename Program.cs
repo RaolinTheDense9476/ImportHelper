@@ -58,6 +58,7 @@ namespace ImportHelper
       string tsqlPrefixArg = generateTsql && !string.IsNullOrEmpty(arguments["GenerateTsql"]) ? arguments["GenerateTsql"] : null;
       string bcpPrefixArg = generateBcpFormat && !string.IsNullOrEmpty(arguments["GenerateBcpFormat"]) ? arguments["GenerateBcpFormat"] : null;
       string prepareForBcpReplacement = prepareForBcp && !string.IsNullOrEmpty(arguments["PrepareForBcp"]) ? arguments["PrepareForBcp"] : " ";
+      string targetName = arguments.ContainsKey("Target") && !string.IsNullOrEmpty(arguments["Target"]) ? arguments["Target"] : "mssql";
 
       Encoding encoding;
       try
@@ -68,6 +69,17 @@ namespace ImportHelper
       {
         Console.WriteLine($"Error: Invalid encoding name '{encodingName}'. Using default encoding UTF-8.");
         encoding = Encoding.UTF8;
+      }
+
+      TargetDefinition target;
+      try
+      {
+        target = TargetDefinition.Load(targetName);
+      }
+      catch (Exception ex)
+      {
+        Console.WriteLine($"Error: Could not load target '{targetName}': {ex.Message}");
+        return;
       }
 
       if (!Directory.Exists(directoryPath))
@@ -97,13 +109,20 @@ namespace ImportHelper
           if (generateTsql)
           {
             tsqlOutputPrefix = tsqlPrefixArg ?? Path.GetFileNameWithoutExtension(filePath) + "_";
-            GenerateTsqlScript(filePath, columnInfos, tsqlOutputPrefix, delimiter, hasHeader, encoding);
+            GenerateTsqlScript(filePath, columnInfos, tsqlOutputPrefix, delimiter, hasHeader, encoding, target);
           }
 
           if (generateBcpFormat)
           {
-            bcpOutputPrefix = bcpPrefixArg ?? Path.GetFileNameWithoutExtension(filePath) + "_";
-            GenerateBcpFormatFile(filePath, columnInfos, bcpOutputPrefix, delimiter, encoding);
+            if (target.BcpFormatFile == null)
+            {
+              Console.WriteLine($"Target '{target.Name}' does not define a bcpFormatFile section; skipping -GenerateBcpFormat.");
+            }
+            else
+            {
+              bcpOutputPrefix = bcpPrefixArg ?? Path.GetFileNameWithoutExtension(filePath) + "_";
+              GenerateBcpFormatFile(filePath, columnInfos, bcpOutputPrefix, delimiter, target.BcpFormatFile);
+            }
           }
 
           if (prepareForBcp)
@@ -191,13 +210,14 @@ namespace ImportHelper
 
     private static void ShowHelpMessage()
     {
-      Console.WriteLine("\nUsage: ImportHelper.exe -FilePattern <file_pattern> -Delimiter <delimiter> [-HasHeader] [-Encoding <encoding_name>] [-GenerateTsql [<output_prefix>]] [-GenerateBcpFormat [<output_prefix>]] [-AllowEmbeddedNewlines] [-ForceQuotedAsString] [-PrepareForBcp [<replacement>]]");
+      Console.WriteLine("\nUsage: ImportHelper.exe -FilePattern <file_pattern> -Delimiter <delimiter> [-HasHeader] [-Encoding <encoding_name>] [-Target <name_or_path>] [-GenerateTsql [<output_prefix>]] [-GenerateBcpFormat [<output_prefix>]] [-AllowEmbeddedNewlines] [-ForceQuotedAsString] [-PrepareForBcp [<replacement>]]");
       Console.WriteLine("  -FilePattern <file_pattern>   : File pattern with optional wildcards (e.g., C:\\data\\*.csv, *.txt, data\\file.csv, \\\\server\\share\\file.txt)");
       Console.WriteLine("  -Delimiter <delimiter>        : Field delimiter character (e.g., ',', '\\t', '|')");
       Console.WriteLine("  -HasHeader                    : Indicates first row contains column headers");
       Console.WriteLine("  -Encoding <encoding_name>     : Encoding name (e.g., UTF-8, ASCII, UTF-16, ISO-8859-1)");
-      Console.WriteLine("  -GenerateTsql [<prefix>]      : Generate T-SQL create table script with optional table name prefix");
-      Console.WriteLine("  -GenerateBcpFormat [<prefix>] : Generate BCP format file with optional output file prefix");
+      Console.WriteLine("  -Target <name_or_path>        : Database target definition to use (default: mssql). Either a bundled name (looks for targets/<name>.yaml next to the executable) or a path to a custom YAML file.");
+      Console.WriteLine("  -GenerateTsql [<prefix>]      : Generate a CREATE TABLE script for the target with optional table name prefix");
+      Console.WriteLine("  -GenerateBcpFormat [<prefix>] : Generate a bcp format file with optional output file prefix (only if the target defines a bcpFormatFile section)");
       Console.WriteLine("  -AllowEmbeddedNewlines        : Suppress the warning for quoted fields containing embedded newlines");
       Console.WriteLine("  -ForceQuotedAsString          : Always treat quoted values as String instead of attempting Numeric/Date inference on them");
       Console.WriteLine("  -PrepareForBcp [<replacement>]: Write a bcp_<filename> copy with quotes removed and any delimiter/newline that was inside a quoted value replaced with <replacement> (default: a single space). Native bcp -c mode does not understand CSV quoting, so this produces a file safe for a plain bcp import.");
@@ -436,130 +456,132 @@ namespace ImportHelper
       return columnInfos;
     }
 
-    // Maps the encoding actually used to read the file to the matching bcp
-    // character-mode flags, instead of always assuming raw/native.
-    static string GetBcpEncodingFlags(Encoding encoding)
+    // Determines whether a Numeric column's values all parse as integers,
+    // by rescanning the file. This is a fact about the data, not a per-target
+    // decision, so it stays in code; the target only decides what string to
+    // emit for "integer" vs. "float".
+    static bool IsIntegerColumn(string inputFilePath, char delimiter, bool hasHeader, Encoding encoding, int columnIndex)
     {
-      if (encoding.CodePage == Encoding.Unicode.CodePage)
+      int rowNum = 0;
+      foreach (DelimitedRow delimitedRow in ReadDelimitedFile(inputFilePath, delimiter, encoding))
       {
-        // -w expects native (little-endian) UCS-2/UTF-16 and is not
-        // compatible with -C, so no code page flag is needed.
-        return "-w";
+        if (hasHeader && rowNum == 0)
+        {
+          rowNum++;
+          continue;
+        }
+        string[] values = delimitedRow.Fields;
+        if (columnIndex < values.Length && !string.IsNullOrWhiteSpace(values[columnIndex]))
+        {
+          if (!int.TryParse(values[columnIndex].Trim(), out _))
+          {
+            return false;
+          }
+        }
+        rowNum++;
       }
-
-      // -c with the file's actual code page, so bcp interprets multi-byte
-      // and extended characters correctly instead of guessing via -C RAW.
-      return $"-c -C {encoding.CodePage}";
+      return true;
     }
 
-    static void GenerateTsqlScript(string inputFilePath, List<ColumnInfo> columnInfos, string outputPrefix, char delimiter, bool hasHeader, Encoding encoding)
+    static string GetSqlType(ColumnInfo columnInfo, string inputFilePath, char delimiter, bool hasHeader, Encoding encoding, TargetDefinition target)
+    {
+      switch (columnInfo.DataType)
+      {
+        case ColumnDataType.Numeric:
+          bool isInteger = IsIntegerColumn(inputFilePath, delimiter, hasHeader, encoding, columnInfo.Index);
+          return isInteger ? target.TypeMapping.Integer : target.TypeMapping.Float;
+        case ColumnDataType.Date:
+          return target.TypeMapping.Date;
+        case ColumnDataType.String:
+        default:
+          return target.GetStringType(columnInfo.MaxLength);
+      }
+    }
+
+    static void GenerateTsqlScript(string inputFilePath, List<ColumnInfo> columnInfos, string outputPrefix, char delimiter, bool hasHeader, Encoding encoding, TargetDefinition target)
     {
       string fileNameWithoutExtension = Path.GetFileNameWithoutExtension(inputFilePath);
       string outputFilePath = Path.Combine(Path.GetDirectoryName(inputFilePath), $"{outputPrefix}{fileNameWithoutExtension}_CreateTable.sql");
+      string tableName = $"{outputPrefix}{fileNameWithoutExtension}";
       string delimiterForBcp = delimiter == '\t' ? "\\t" : delimiter.ToString();
-      string encodingFlags = GetBcpEncodingFlags(encoding);
-      string firstRowFlag = hasHeader ? " -F 2" : "";
-      string bcpCommand = $"bcp {outputPrefix}{fileNameWithoutExtension} in \"{inputFilePath}\" {encodingFlags} -t\"{delimiterForBcp}\" -T{firstRowFlag} -S <servername> -d <dbname>";
+      string encodingFlags = target.GetEncodingFlags(encoding);
+      string headerFlag = hasHeader ? target.BulkImport.HeaderFlagWhenHasHeader : "";
+      string bcpCommand = target.BulkImport.CommandTemplate
+          .Replace("{table}", tableName)
+          .Replace("{filePath}", inputFilePath)
+          .Replace("{delimiterEscaped}", delimiterForBcp)
+          .Replace("{encodingFlags}", encodingFlags)
+          .Replace("{headerFlag}", headerFlag);
+      string headerNote = hasHeader ? target.BulkImport.HeaderNoteWhenHasHeader : "";
+      string bcpNotes = target.BulkImport.NotesTemplate
+          .Replace("{encodingName}", encoding.EncodingName)
+          .Replace("{codePage}", encoding.CodePage.ToString())
+          .Replace("{headerNote}", headerNote);
+
+      var columnLines = new List<string>();
+      for (int i = 0; i < columnInfos.Count; i++)
+      {
+        string columnName = columnInfos[i].Name != null ? Regex.Replace(columnInfos[i].Name, @"[^a-zA-Z0-9_]", "") : $"Column{i + 1}";
+        string sqlType = GetSqlType(columnInfos[i], inputFilePath, delimiter, hasHeader, encoding, target);
+        string columnLine = target.CreateTable.ColumnTemplate
+            .Replace("{quotedName}", target.QuoteIdentifier(columnName))
+            .Replace("{type}", sqlType);
+        columnLines.Add(columnLine);
+      }
+
+      string createTableScript = target.CreateTable.Template
+          .Replace("{tableName}", tableName)
+          .Replace("{columns}", string.Join(target.CreateTable.ColumnSeparator, columnLines));
 
       using (StreamWriter writer = new StreamWriter(outputFilePath))
       {
         writer.WriteLine($"-- T-SQL Table Creation Script for {Path.GetFileName(inputFilePath)}");
         writer.WriteLine($"-- Generated on {DateTime.Now}");
+        writer.WriteLine($"-- Target: {target.DisplayName} ({target.Name})");
         writer.WriteLine($"");
-        writer.WriteLine($"CREATE TABLE {outputPrefix}{fileNameWithoutExtension} (");
-
-        for (int i = 0; i < columnInfos.Count; i++)
-        {
-          string columnName = columnInfos[i].Name != null ? Regex.Replace(columnInfos[i].Name, @"[^a-zA-Z0-9_]", "") : $"Column{i + 1}";
-          string sqlType;
-          switch (columnInfos[i].DataType)
-          {
-            case ColumnDataType.Numeric:
-              bool isInteger = true;
-              {
-                int rowNum = 0;
-                foreach (DelimitedRow delimitedRow in ReadDelimitedFile(inputFilePath, delimiter, encoding))
-                {
-                  if (hasHeader && rowNum == 0)
-                  {
-                    rowNum++;
-                    continue;
-                  }
-                  string[] values = delimitedRow.Fields;
-                  if (i < values.Length && !string.IsNullOrWhiteSpace(values[i]))
-                  {
-                    if (!int.TryParse(values[i].Trim(), out _))
-                    {
-                      isInteger = false;
-                      break;
-                    }
-                  }
-                  rowNum++;
-                }
-              }
-              sqlType = isInteger ? "INT" : "FLOAT";
-              break;
-            case ColumnDataType.Date:
-              sqlType = "DATETIME";
-              break;
-            case ColumnDataType.String:
-            default:
-              int maxLength = columnInfos[i].MaxLength;
-              if (maxLength <= 10) sqlType = "VARCHAR(10)";
-              else if (maxLength <= 50) sqlType = "VARCHAR(50)";
-              else if (maxLength <= 100) sqlType = "VARCHAR(100)";
-              else if (maxLength <= 255) sqlType = "VARCHAR(255)";
-              else if (maxLength <= 500) sqlType = "VARCHAR(500)";
-              else if (maxLength <= 1000) sqlType = "VARCHAR(1000)";
-              else sqlType = "VARCHAR(MAX)";
-              break;
-          }
-          writer.WriteLine($"    [{columnName}] {sqlType}{(i < columnInfos.Count - 1 ? "," : "")}");
-        }
-
-        writer.WriteLine(");");
+        writer.WriteLine(createTableScript);
         writer.WriteLine($"");
-        writer.WriteLine($"-- You can use the following BCP command to import the data:");
+        writer.WriteLine($"-- You can use the following command to import the data:");
         writer.WriteLine($"-- {bcpCommand}");
-        writer.WriteLine($"-- (Assuming Windows Authentication. {encoding.EncodingName} (code page {encoding.CodePage}) is the encoding detected for this file{(hasHeader ? "; -F 2 skips the header row" : "")}.)");
+        if (!string.IsNullOrEmpty(bcpNotes))
+        {
+          writer.WriteLine($"-- {bcpNotes}");
+        }
       }
 
       Console.WriteLine($"T-SQL script generated: {outputFilePath}");
-      Console.WriteLine("BCP command:");
+      Console.WriteLine("Bulk import command:");
       Console.WriteLine($"  {bcpCommand}");
     }
 
-    static void GenerateBcpFormatFile(string inputFilePath, List<ColumnInfo> columnInfos, string outputPrefix, char delimiter, Encoding encoding)
+    static void GenerateBcpFormatFile(string inputFilePath, List<ColumnInfo> columnInfos, string outputPrefix, char delimiter, BcpFormatSpec bcpFormatFile)
     {
       string fileNameWithoutExtension = Path.GetFileNameWithoutExtension(inputFilePath);
       string outputFilePath = Path.Combine(Path.GetDirectoryName(inputFilePath), $"{outputPrefix}{fileNameWithoutExtension}.fmt");
 
       using (StreamWriter writer = new StreamWriter(outputFilePath, false, Encoding.ASCII))
       {
-        writer.WriteLine($"12.0");
+        writer.WriteLine(bcpFormatFile.Version);
         writer.WriteLine($"{columnInfos.Count}");
 
         for (int i = 0; i < columnInfos.Count; i++)
         {
-          string sqlType;
-          int fieldLength;
+          BcpFormatTypeEntry entry;
           switch (columnInfos[i].DataType)
           {
             case ColumnDataType.Numeric:
-              sqlType = "SQLFLT8";
-              fieldLength = 8;
+              entry = bcpFormatFile.Numeric;
               break;
             case ColumnDataType.Date:
-              sqlType = "SQLDATETIME";
-              fieldLength = 8;
+              entry = bcpFormatFile.Date;
               break;
             case ColumnDataType.String:
             default:
-              sqlType = "SQLCHAR";
-              fieldLength = Math.Max(8000, columnInfos[i].MaxLength);
+              entry = bcpFormatFile.String;
               break;
           }
-          writer.WriteLine($"{i + 1}\tSQLSERVER\t{sqlType}\t0\t{fieldLength}\t\"{(i < columnInfos.Count - 1 ? (delimiter == '\t' ? "\\t" : delimiter.ToString()) : "")}\"\t{i + 1}\t{(columnInfos[i].Name != null ? Regex.Replace(columnInfos[i].Name, @"[^a-zA-Z0-9_]", "") : $"Column{i + 1}")}");
+          int fieldLength = entry.LengthFromMaxLength ? Math.Max(entry.MinLength, columnInfos[i].MaxLength) : entry.Length;
+          writer.WriteLine($"{i + 1}\tSQLSERVER\t{entry.SqlType}\t0\t{fieldLength}\t\"{(i < columnInfos.Count - 1 ? (delimiter == '\t' ? "\\t" : delimiter.ToString()) : "")}\"\t{i + 1}\t{(columnInfos[i].Name != null ? Regex.Replace(columnInfos[i].Name, @"[^a-zA-Z0-9_]", "") : $"Column{i + 1}")}");
         }
       }
 
