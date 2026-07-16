@@ -161,6 +161,10 @@ Write generated files to a separate output folder instead of alongside the sourc
 ImportHelper -FilePattern "DataFiles\*.csv" -Delimiter "," -HasHeader -DestinationDirectory "C:\staging\output" -GenerateTsql
 ```
 
+## Exit codes (CLI)
+
+The CLI can be used as a "is this file well-formed?" check in scripts or CI: it exits **0** if every matched file was found, readable, and had no malformed rows, and **1** otherwise — file not found, no files matched the pattern, missing required arguments, or a row with the wrong number of columns (which is still parsed and reported, just flagged). `-Help`/`-help` always exits 0. An embedded-newline warning ([see above](#quoting-and-escaping)) does *not* affect the exit code by itself, since the data is still valid CSV — pass `-AllowEmbeddedNewlines` to silence the warning text, or check the log output if you need to detect it separately.
+
 ## Notes
 
 - The utility scans the entire content of each file to accurately determine data types and maximum string lengths.

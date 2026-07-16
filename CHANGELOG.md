@@ -5,6 +5,20 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project uses [Semantic Versioning](https://semver.org/).
 
+## [1.4.0] - 2026-07-16
+
+### Added
+
+- The CLI now returns a real process exit code: `0` on success, `1` if a file wasn't found, no files matched the pattern, required arguments were missing, or a row had the wrong number of columns — usable as a "is this file well-formed?" check in scripts/CI. `-Help` always exits `0`.
+
+### Fixed
+
+- Previously, `Main` was `void` and the CLI always exited `0` regardless of outcome — malformed files, missing files, and even missing required arguments all silently reported success to the calling process.
+
+### Removed
+
+- The Debug-only `Console.ReadKey()` "Press any key to exit" prompt, which crashed with an unhandled exception whenever stdin was redirected (e.g. piped input, CI, non-interactive shells).
+
 ## [1.3.0] - 2026-07-16
 
 ### Added

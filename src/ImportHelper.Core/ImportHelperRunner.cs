@@ -73,19 +73,30 @@ namespace ImportHelper.Core
       if (!files.Any())
       {
         log($"No files found matching the filter '{fileFilter}' in '{directoryPath}'.");
+        result.Success = false;
         return result;
       }
 
       foreach (string filePath in files)
       {
         log($"\nProcessing file: {filePath} (Encoding: {encoding.EncodingName})");
-        List<ColumnInfo>? columnInfos = ProcessFile(filePath, delimiter, options.HasHeader, encoding, options.AllowEmbeddedNewlines, options.ForceQuotedAsString, log);
+        (List<ColumnInfo>? columnInfos, bool hadMalformedRows) = ProcessFile(filePath, delimiter, options.HasHeader, encoding, options.AllowEmbeddedNewlines, options.ForceQuotedAsString, log);
 
         if (columnInfos == null)
         {
           result.Success = false;
           result.FilesFailed++;
           continue;
+        }
+
+        if (hadMalformedRows)
+        {
+          // Structurally different from an embedded-newline warning: a row
+          // with the wrong column count is not valid delimited data, so a
+          // caller checking "is this file well-formed?" via the exit code
+          // should see this as a failure even though the rest of the file
+          // still got analyzed.
+          result.Success = false;
         }
 
         result.FilesProcessedSuccessfully++;
@@ -122,12 +133,12 @@ namespace ImportHelper.Core
       return result;
     }
 
-    static List<ColumnInfo>? ProcessFile(string filePath, char delimiter, bool hasHeader, Encoding encoding, bool allowEmbeddedNewlines, bool forceQuotedAsString, Action<string> log)
+    static (List<ColumnInfo>? Columns, bool HadMalformedRows) ProcessFile(string filePath, char delimiter, bool hasHeader, Encoding encoding, bool allowEmbeddedNewlines, bool forceQuotedAsString, Action<string> log)
     {
       if (!File.Exists(filePath))
       {
         log($"Error: File not found - {filePath}");
-        return null;
+        return (null, false);
       }
 
       // First pass to determine column count and headers
@@ -138,13 +149,13 @@ namespace ImportHelper.Core
         if (firstLineValues == null)
         {
           log("File is empty.");
-          return new List<ColumnInfo>();
+          return (new List<ColumnInfo>(), false);
         }
       }
       catch (Exception ex)
       {
         log($"Error reading file '{filePath}' with encoding '{encoding.EncodingName}': {ex.Message}");
-        return null;
+        return (null, false);
       }
 
       int columnCount = firstLineValues.Length;
@@ -162,6 +173,7 @@ namespace ImportHelper.Core
 
       bool[] couldBeNumeric = Enumerable.Repeat(true, columnCount).ToArray();
       bool[] couldBeDate = Enumerable.Repeat(true, columnCount).ToArray();
+      bool hadMalformedRows = false;
 
       // Second pass (streaming): Infer data types and max lengths
       try
@@ -184,6 +196,7 @@ namespace ImportHelper.Core
           if (row.Length != columnCount)
           {
             log($"Warning: Row {rowNumber + 1} has a different number of columns and will be skipped.");
+            hadMalformedRows = true;
             rowNumber++;
             continue;
           }
@@ -228,7 +241,7 @@ namespace ImportHelper.Core
       catch (Exception ex)
       {
         log($"Error processing file '{filePath}' with encoding '{encoding.EncodingName}': {ex.Message}");
-        return null;
+        return (null, false);
       }
 
       // Finalizing data types after full scan
@@ -250,7 +263,7 @@ namespace ImportHelper.Core
         log($"  {(info.Name != null ? info.Name : $"Column {info.Index + 1}")}: Type = {info.DataType}, {(info.DataType == ColumnDataType.String ? $"MaxLength = {info.MaxLength}" : "")}");
       }
 
-      return columnInfos;
+      return (columnInfos, hadMalformedRows);
     }
 
     // Determines whether a Numeric column's values all parse as integers,

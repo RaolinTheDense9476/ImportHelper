@@ -4,7 +4,10 @@ namespace ImportHelper.Cli
 {
   class Program
   {
-    static void Main(string[] args)
+    // Exit code 0 = success (including "processed with an informational
+    // warning, e.g. embedded newlines"); 1 = something is amiss, so scripts
+    // and CI can use this as a "is my file well-formed?" check.
+    static int Main(string[] args)
     {
       // Strip surrounding quotes from all arguments
       for (int i = 0; i < args.Length; i++)
@@ -19,10 +22,16 @@ namespace ImportHelper.Cli
       var arguments = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
       ParseArguments(args, arguments);
 
+      if (arguments.ContainsKey("Help") || arguments.ContainsKey("help") || arguments.ContainsKey("HELP"))
+      {
+        ShowHelpMessage();
+        return 0;
+      }
+
       bool flowControl = ValidateArguments(arguments);
       if (!flowControl)
       {
-        return;
+        return 1;
       }
 
       var options = new ImportHelperOptions
@@ -43,12 +52,9 @@ namespace ImportHelper.Cli
         PrepareForBcpReplacement = arguments.ContainsKey("PrepareForBcp") && !string.IsNullOrEmpty(arguments["PrepareForBcp"]) ? arguments["PrepareForBcp"] : " ",
       };
 
-      ImportHelperRunner.Run(options, Console.WriteLine);
+      ImportHelperResult result = ImportHelperRunner.Run(options, Console.WriteLine);
 
-#if DEBUG
-      Console.WriteLine("\nPress any key to exit.");
-      Console.ReadKey();
-#endif
+      return result.Success ? 0 : 1;
     }
 
     private static bool ValidateArguments(Dictionary<string, string> arguments)
@@ -64,13 +70,6 @@ namespace ImportHelper.Cli
       if (!arguments.ContainsKey("Delimiter"))
       {
         Console.WriteLine("Error: -Delimiter argument is required.");
-        retval = false;
-      }
-
-      if (arguments.ContainsKey("Help") ||
-         arguments.ContainsKey("help") ||
-         arguments.ContainsKey("HELP"))
-      {
         retval = false;
       }
 
@@ -117,6 +116,7 @@ namespace ImportHelper.Cli
       Console.WriteLine("  -AllowEmbeddedNewlines        : Suppress the warning for quoted fields containing embedded newlines");
       Console.WriteLine("  -ForceQuotedAsString          : Always treat quoted values as String instead of attempting Numeric/Date inference on them");
       Console.WriteLine("  -PrepareForBcp [<replacement>]: Write a bcp_<filename> copy with quotes removed and any delimiter/newline that was inside a quoted value replaced with <replacement> (default: a single space). Native bcp -c mode does not understand CSV quoting, so this produces a file safe for a plain bcp import.");
+      Console.WriteLine("\nExit code: 0 if every file was found, parsed, and had no malformed rows; 1 otherwise (file not found, no files matched, or a row had the wrong number of columns).");
       return;
     }
   }
