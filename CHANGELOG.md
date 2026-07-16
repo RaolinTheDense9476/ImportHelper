@@ -5,6 +5,17 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project uses [Semantic Versioning](https://semver.org/).
 
+## [1.2.0] - 2026-07-16
+
+### Added
+
+- `ImportHelper.Gui`: a cross-platform desktop GUI ([Avalonia](https://avaloniaui.net/)), exposing the same options as the CLI as form fields, with a log pane, a completion popup showing each file's column analysis (name/type/max length), and automatic output-folder opening once the popup is dismissed. Runs identically on Windows, Linux, and macOS from one codebase. Unlike the CLI's `-HasHeader` (which defaults off), the GUI's "First row has column headers" checkbox defaults checked — leaving it off on a file that does have a header row treats the header text as a data row, which fails numeric/date parsing and makes every column infer as `String`.
+
+### Changed
+
+- Restructured into a `src/` solution of three projects: `ImportHelper.Core` (the engine — CSV parsing, type inference, target definitions, generation logic, with no UI or argument-parsing code), `ImportHelper.Cli` (the existing command-line tool, now a thin wrapper over `Core`), and `ImportHelper.Gui` (the new GUI, also a thin wrapper over `Core`). CLI behavior and output are unchanged — verified byte-for-byte identical against the pre-refactor version.
+- `src/ImportHelper.Core/targets/mssql.yaml` is the new location of the bundled reference target (previously `targets/mssql.yaml` at the repo root); it still ships as `targets/mssql.yaml` next to both the CLI and GUI executables.
+
 ## [1.1.0] - 2026-07-16
 
 ### Added

@@ -2,7 +2,7 @@ using System.Text;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
 
-namespace ImportHelper
+namespace ImportHelper.Core
 {
   // Everything that differs between database systems / bulk-import tools is
   // meant to live here as data (type names, quoting, command templates), not

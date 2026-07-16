@@ -1,6 +1,6 @@
 # ImportHelper
 
-A command-line utility that analyzes delimited text files (CSV, TSV, etc.) and optionally generates a `CREATE TABLE` script, a bulk-import command, and bcp-ready cleaned copies for importing into a database. The target database/bulk-import tool is a YAML definition, not hardcoded — Microsoft SQL Server ships as the built-in reference target, but you can add another database system or import mechanism without touching the C# code.
+A utility that analyzes delimited text files (CSV, TSV, etc.) and optionally generates a `CREATE TABLE` script, a bulk-import command, and bcp-ready cleaned copies for importing into a database. The target database/bulk-import tool is a YAML definition, not hardcoded — Microsoft SQL Server ships as the built-in reference target, but you can add another database system or import mechanism without touching the C# code. Available as a command-line tool and as a cross-platform desktop GUI, both built on the same underlying engine.
 
 ## Features
 
@@ -9,6 +9,7 @@ A command-line utility that analyzes delimited text files (CSV, TSV, etc.) and o
 - Generates a `CREATE TABLE` script with inferred types, plus a ready-to-run bulk-import command — both driven by a swappable [target definition](#database-targets)
 - Generates BCP format files (for targets that define one)
 - `-PrepareForBcp` rewrites a file to be safe for a plain `bcp -c` import, which has no CSV-quoting awareness of its own
+- A CLI for scripting/automation and a GUI for interactive use ([see below](#gui)), sharing one core engine so behavior is identical either way
 
 ## Download
 
@@ -21,13 +22,31 @@ Only needed if you're building from source rather than using a prebuilt binary a
 - .NET 8 SDK to build and run
 - The `bcp` utility and a SQL Server instance if you intend to use the generated import commands
 
+## Project layout
+
+This is a solution of three projects under `src/`:
+
+| Project | What it is |
+| --- | --- |
+| `ImportHelper.Core` | The actual engine — CSV parsing, type inference, [target definitions](#database-targets), and script/command generation. No UI code at all. |
+| `ImportHelper.Cli` | The command-line tool (`ImportHelper.exe`/`ImportHelper`) — parses arguments and calls into `Core`. |
+| `ImportHelper.Gui` | The [Avalonia](https://avaloniaui.net/)-based desktop GUI — one codebase, native windows on Windows/Linux/macOS — that calls the same `Core` engine. |
+
 ## Build
 
 ```
 dotnet build
 ```
 
-## Usage
+Builds the whole solution. To build or run just one project: `dotnet build src/ImportHelper.Cli` / `dotnet run --project src/ImportHelper.Gui`.
+
+## GUI
+
+`ImportHelper.Gui` is an [Avalonia](https://avaloniaui.net/) desktop app — one codebase producing native windows on Windows, Linux, and macOS, so the experience is consistent across platforms rather than being a native-looking app on one OS and an afterthought on the others. It exposes the same options as the CLI flags below as form fields (file pattern with a browse button — a checkbox next to it switches Browse between picking a single file or a whole folder — delimiter, target with a file browser for custom YAML, and checkboxes for the rest — "First row has column headers" defaults checked in the GUI, unlike the CLI's `-HasHeader`, since most files people pick interactively have one), a Run button, and a log pane showing the same output the CLI would print. When a run finishes, a popup reports each file's column analysis — name, inferred type, and max length for strings, the same report the CLI prints per file — plus a failure count if any file couldn't be processed; dismissing it opens the output folder in the OS file manager. It calls the exact same `ImportHelper.Core` engine as the CLI, so results are identical between the two.
+
+Run it with `dotnet run --project src/ImportHelper.Gui`, or use a prebuilt binary from [Releases](https://github.com/RaolinTheDense9476/ImportHelper/releases/latest).
+
+## CLI Usage
 
 ```
 ImportHelper -FilePattern <file_pattern> -Delimiter <delimiter>
@@ -66,7 +85,7 @@ ImportHelper parses delimited fields using standard CSV-style quoting:
 
 ## Database targets
 
-What's genuinely *data* (type names, identifier quoting, the command template) lives in a YAML file per target; what's genuinely *behavior* (parsing the file, figuring out if a numeric column is really an integer) stays in code. [`targets/mssql.yaml`](targets/mssql.yaml) is the reference implementation — SQL Server isn't special-cased in C#, it's just the target that ships by default.
+What's genuinely *data* (type names, identifier quoting, the command template) lives in a YAML file per target; what's genuinely *behavior* (parsing the file, figuring out if a numeric column is really an integer) stays in code. [`src/ImportHelper.Core/targets/mssql.yaml`](src/ImportHelper.Core/targets/mssql.yaml) is the reference implementation — SQL Server isn't special-cased in C#, it's just the target that ships by default.
 
 A target definition has these sections:
 
@@ -83,7 +102,7 @@ A target definition has these sections:
 | `bulkImport.notesTemplate` / `.headerNoteWhenHasHeader` | Optional trailing comment line in the generated script (`{encodingName}`, `{codePage}`, `{headerNote}` placeholders). Leave `notesTemplate` empty to omit it entirely. |
 | `bcpFormatFile` | Optional. Only meaningful for targets with an analogous format-file step (bcp's `.fmt` file); omit this section entirely for targets that don't have one, and `-GenerateBcpFormat` will say so instead of generating anything. |
 
-To add a new target, copy `targets/mssql.yaml`, adjust it for your database/tool's conventions, and either drop it in `targets/<name>.yaml` next to the executable or pass `-Target <path-to-file.yaml>` directly — no rebuild required.
+To add a new target, copy `src/ImportHelper.Core/targets/mssql.yaml`, adjust it for your database/tool's conventions, and either drop it in `targets/<name>.yaml` next to the executable (it ships alongside both the CLI and GUI builds) or pass `-Target <path-to-file.yaml>` directly — no rebuild required.
 
 ## Why `-PrepareForBcp`?
 

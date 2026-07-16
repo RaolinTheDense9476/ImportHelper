@@ -1,0 +1,55 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="700" d:DesignHeight="700"
+        x:Class="ImportHelper.Gui.MainWindow"
+        Title="ImportHelper"
+        Width="700" Height="700">
+  <ScrollViewer>
+    <StackPanel Margin="16" Spacing="8">
+
+      <TextBlock Text="File pattern" FontWeight="Bold" />
+      <Grid ColumnDefinitions="*,Auto">
+        <TextBox Grid.Column="0" Name="FilePatternBox" Watermark="C:\data\*.csv" />
+        <Button Grid.Column="1" Content="Browse..." Margin="6,0,0,0" Click="OnBrowseFilePattern" />
+      </Grid>
+      <CheckBox Name="BrowseSingleFileCheck" Content="Browse selects a single file instead of a folder" />
+
+      <TextBlock Text="Delimiter" FontWeight="Bold" Margin="0,8,0,0" />
+      <TextBox Name="DelimiterBox" Text="," Watermark="e.g. , or \t or |" />
+
+      <CheckBox Name="HasHeaderCheck" Content="First row has column headers" IsChecked="True" Margin="0,8,0,0" />
+
+      <TextBlock Text="Encoding" FontWeight="Bold" Margin="0,8,0,0" />
+      <TextBox Name="EncodingBox" Text="UTF-8" />
+
+      <TextBlock Text="Database target" FontWeight="Bold" Margin="0,8,0,0" />
+      <Grid ColumnDefinitions="*,Auto">
+        <TextBox Grid.Column="0" Name="TargetBox" Text="mssql" Watermark="mssql, or a path to a custom target .yaml" />
+        <Button Grid.Column="1" Content="Browse..." Margin="6,0,0,0" Click="OnBrowseTarget" />
+      </Grid>
+
+      <Separator Margin="0,12" />
+
+      <CheckBox Name="GenerateTsqlCheck" Content="Generate a CREATE TABLE script + bulk-import command" IsChecked="True" />
+      <CheckBox Name="GenerateBcpFormatCheck" Content="Generate a bcp format file" Margin="0,6,0,0" />
+      <CheckBox Name="PrepareForBcpCheck" Content="Prepare a bcp-ready copy (strips quoting)" Margin="0,6,0,0" />
+      <CheckBox Name="AllowEmbeddedNewlinesCheck" Content="Allow embedded newlines in quoted fields (suppresses the warning)" Margin="0,6,0,0" />
+      <CheckBox Name="ForceQuotedAsStringCheck" Content="Always treat quoted values as text" Margin="0,6,0,0" />
+
+      <Separator Margin="0,12" />
+
+      <Button Name="RunButton" Content="Run" HorizontalAlignment="Left" Padding="28,8" Click="OnRunClicked" />
+
+      <TextBlock Text="Log" FontWeight="Bold" Margin="0,12,0,0" />
+      <TextBox Name="LogBox"
+               IsReadOnly="True"
+               AcceptsReturn="True"
+               TextWrapping="NoWrap"
+               FontFamily="Consolas,Menlo,monospace"
+               Height="220" />
+
+    </StackPanel>
+  </ScrollViewer>
+</Window>
