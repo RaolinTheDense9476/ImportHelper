@@ -28,6 +28,7 @@ namespace ImportHelper.Cli
       var options = new ImportHelperOptions
       {
         FilePattern = arguments["FilePattern"],
+        DestinationDirectory = arguments.ContainsKey("DestinationDirectory") && !string.IsNullOrEmpty(arguments["DestinationDirectory"]) ? arguments["DestinationDirectory"] : null,
         Delimiter = arguments["Delimiter"],
         HasHeader = arguments.ContainsKey("HasHeader"),
         Encoding = arguments.ContainsKey("Encoding") ? arguments["Encoding"] : "UTF-8",
@@ -104,8 +105,9 @@ namespace ImportHelper.Cli
 
     private static void ShowHelpMessage()
     {
-      Console.WriteLine("\nUsage: ImportHelper.exe -FilePattern <file_pattern> -Delimiter <delimiter> [-HasHeader] [-Encoding <encoding_name>] [-Target <name_or_path>] [-GenerateTsql [<output_prefix>]] [-GenerateBcpFormat [<output_prefix>]] [-AllowEmbeddedNewlines] [-ForceQuotedAsString] [-PrepareForBcp [<replacement>]]");
+      Console.WriteLine("\nUsage: ImportHelper.exe -FilePattern <file_pattern> -Delimiter <delimiter> [-DestinationDirectory <path>] [-HasHeader] [-Encoding <encoding_name>] [-Target <name_or_path>] [-GenerateTsql [<output_prefix>]] [-GenerateBcpFormat [<output_prefix>]] [-AllowEmbeddedNewlines] [-ForceQuotedAsString] [-PrepareForBcp [<replacement>]]");
       Console.WriteLine("  -FilePattern <file_pattern>   : File pattern with optional wildcards (e.g., C:\\data\\*.csv, *.txt, data\\file.csv, \\\\server\\share\\file.txt)");
+      Console.WriteLine("  -DestinationDirectory <path>  : Where to write generated files. Defaults to the same directory as each input file. Created if it doesn't exist.");
       Console.WriteLine("  -Delimiter <delimiter>        : Field delimiter character (e.g., ',', '\\t', '|')");
       Console.WriteLine("  -HasHeader                    : Indicates first row contains column headers");
       Console.WriteLine("  -Encoding <encoding_name>     : Encoding name (e.g., UTF-8, ASCII, UTF-16, ISO-8859-1)");

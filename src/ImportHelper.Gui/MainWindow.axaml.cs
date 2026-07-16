@@ -51,6 +51,26 @@ public partial class MainWindow : Window
     }
   }
 
+  private async void OnBrowseDestinationDirectory(object? sender, RoutedEventArgs e)
+  {
+    IStorageProvider? storageProvider = GetTopLevel(this)?.StorageProvider;
+    if (storageProvider == null)
+    {
+      return;
+    }
+
+    IReadOnlyList<IStorageFolder> folders = await storageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+    {
+      Title = "Choose where to write generated files",
+      AllowMultiple = false,
+    });
+
+    if (folders.Count > 0 && folders[0].TryGetLocalPath() is string folderPath)
+    {
+      DestinationDirectoryBox.Text = folderPath;
+    }
+  }
+
   private async void OnBrowseTarget(object? sender, RoutedEventArgs e)
   {
     IStorageProvider? storageProvider = GetTopLevel(this)?.StorageProvider;
@@ -77,6 +97,7 @@ public partial class MainWindow : Window
     var options = new ImportHelperOptions
     {
       FilePattern = FilePatternBox.Text ?? "",
+      DestinationDirectory = string.IsNullOrWhiteSpace(DestinationDirectoryBox.Text) ? null : DestinationDirectoryBox.Text,
       Delimiter = string.IsNullOrEmpty(DelimiterBox.Text) ? "," : DelimiterBox.Text,
       HasHeader = HasHeaderCheck.IsChecked == true,
       Encoding = string.IsNullOrWhiteSpace(EncodingBox.Text) ? "UTF-8" : EncodingBox.Text,

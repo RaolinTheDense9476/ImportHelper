@@ -16,6 +16,12 @@
       </Grid>
       <CheckBox Name="BrowseSingleFileCheck" Content="Browse selects a single file instead of a folder" />
 
+      <TextBlock Text="Destination directory (optional)" FontWeight="Bold" Margin="0,8,0,0" />
+      <Grid ColumnDefinitions="*,Auto">
+        <TextBox Grid.Column="0" Name="DestinationDirectoryBox" Watermark="Defaults to the same folder as each input file" />
+        <Button Grid.Column="1" Content="Browse..." Margin="6,0,0,0" Click="OnBrowseDestinationDirectory" />
+      </Grid>
+
       <TextBlock Text="Delimiter" FontWeight="Bold" Margin="0,8,0,0" />
       <TextBox Name="DelimiterBox" Text="," Watermark="e.g. , or \t or |" />
 

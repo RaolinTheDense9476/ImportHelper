@@ -3,6 +3,7 @@ namespace ImportHelper.Core
   public class ImportHelperOptions
   {
     public string FilePattern { get; set; } = "";
+    public string? DestinationDirectory { get; set; }
     public string Delimiter { get; set; } = ",";
     public bool HasHeader { get; set; }
     public string Encoding { get; set; } = "UTF-8";

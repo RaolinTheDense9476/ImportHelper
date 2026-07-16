@@ -24,7 +24,18 @@ namespace ImportHelper.Core
         directoryPath = Path.GetFullPath(directoryPath);
       }
 
-      result.OutputDirectory = directoryPath;
+      // Default to writing output alongside the input files, but let the
+      // caller redirect everything to one destination instead.
+      string outputDirectory = string.IsNullOrWhiteSpace(options.DestinationDirectory)
+          ? directoryPath
+          : Path.GetFullPath(options.DestinationDirectory);
+
+      if (!string.IsNullOrWhiteSpace(options.DestinationDirectory))
+      {
+        Directory.CreateDirectory(outputDirectory);
+      }
+
+      result.OutputDirectory = outputDirectory;
 
       Encoding encoding;
       try
@@ -83,7 +94,7 @@ namespace ImportHelper.Core
         if (options.GenerateTsql)
         {
           string tsqlOutputPrefix = options.TsqlPrefix ?? Path.GetFileNameWithoutExtension(filePath) + "_";
-          string tsqlPath = GenerateTsqlScript(filePath, columnInfos, tsqlOutputPrefix, delimiter, options.HasHeader, encoding, target, log);
+          string tsqlPath = GenerateTsqlScript(filePath, outputDirectory, columnInfos, tsqlOutputPrefix, delimiter, options.HasHeader, encoding, target, log);
           result.GeneratedFiles.Add(tsqlPath);
         }
 
@@ -96,14 +107,14 @@ namespace ImportHelper.Core
           else
           {
             string bcpOutputPrefix = options.BcpFormatPrefix ?? Path.GetFileNameWithoutExtension(filePath) + "_";
-            string fmtPath = GenerateBcpFormatFile(filePath, columnInfos, bcpOutputPrefix, delimiter, target.BcpFormatFile, log);
+            string fmtPath = GenerateBcpFormatFile(filePath, outputDirectory, columnInfos, bcpOutputPrefix, delimiter, target.BcpFormatFile, log);
             result.GeneratedFiles.Add(fmtPath);
           }
         }
 
         if (options.PrepareForBcp)
         {
-          string preparedPath = PrepareForBcpFile(filePath, delimiter, encoding, options.PrepareForBcpReplacement, log);
+          string preparedPath = PrepareForBcpFile(filePath, outputDirectory, delimiter, encoding, options.PrepareForBcpReplacement, log);
           result.GeneratedFiles.Add(preparedPath);
         }
       }
@@ -284,10 +295,10 @@ namespace ImportHelper.Core
       }
     }
 
-    static string GenerateTsqlScript(string inputFilePath, List<ColumnInfo> columnInfos, string outputPrefix, char delimiter, bool hasHeader, Encoding encoding, TargetDefinition target, Action<string> log)
+    static string GenerateTsqlScript(string inputFilePath, string outputDirectory, List<ColumnInfo> columnInfos, string outputPrefix, char delimiter, bool hasHeader, Encoding encoding, TargetDefinition target, Action<string> log)
     {
       string fileNameWithoutExtension = Path.GetFileNameWithoutExtension(inputFilePath);
-      string outputFilePath = Path.Combine(Path.GetDirectoryName(inputFilePath) ?? "", $"{outputPrefix}{fileNameWithoutExtension}_CreateTable.sql");
+      string outputFilePath = Path.Combine(outputDirectory, $"{outputPrefix}{fileNameWithoutExtension}_CreateTable.sql");
       string tableName = $"{outputPrefix}{fileNameWithoutExtension}";
       string delimiterForBcp = delimiter == '\t' ? "\\t" : delimiter.ToString();
       string encodingFlags = target.GetEncodingFlags(encoding);
@@ -342,10 +353,10 @@ namespace ImportHelper.Core
       return outputFilePath;
     }
 
-    static string GenerateBcpFormatFile(string inputFilePath, List<ColumnInfo> columnInfos, string outputPrefix, char delimiter, BcpFormatSpec bcpFormatFile, Action<string> log)
+    static string GenerateBcpFormatFile(string inputFilePath, string outputDirectory, List<ColumnInfo> columnInfos, string outputPrefix, char delimiter, BcpFormatSpec bcpFormatFile, Action<string> log)
     {
       string fileNameWithoutExtension = Path.GetFileNameWithoutExtension(inputFilePath);
-      string outputFilePath = Path.Combine(Path.GetDirectoryName(inputFilePath) ?? "", $"{outputPrefix}{fileNameWithoutExtension}.fmt");
+      string outputFilePath = Path.Combine(outputDirectory, $"{outputPrefix}{fileNameWithoutExtension}.fmt");
 
       using (StreamWriter writer = new StreamWriter(outputFilePath, false, Encoding.ASCII))
       {
@@ -384,10 +395,10 @@ namespace ImportHelper.Core
     // import. This rewrites the file with quotes stripped (already handled
     // by the CSV-aware parser) and any delimiter/newline that was protected
     // by quoting neutralized, producing a flat file safe for plain bcp -c.
-    static string PrepareForBcpFile(string inputFilePath, char delimiter, Encoding encoding, string replacement, Action<string> log)
+    static string PrepareForBcpFile(string inputFilePath, string outputDirectory, char delimiter, Encoding encoding, string replacement, Action<string> log)
     {
       string delimiterString = delimiter.ToString();
-      string outputFilePath = Path.Combine(Path.GetDirectoryName(inputFilePath) ?? "", "bcp_" + Path.GetFileName(inputFilePath));
+      string outputFilePath = Path.Combine(outputDirectory, "bcp_" + Path.GetFileName(inputFilePath));
 
       using (StreamWriter writer = new StreamWriter(outputFilePath, false, encoding))
       {

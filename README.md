@@ -42,7 +42,7 @@ Builds the whole solution. To build or run just one project: `dotnet build src/I
 
 ## GUI
 
-`ImportHelper.Gui` is an [Avalonia](https://avaloniaui.net/) desktop app — one codebase producing native windows on Windows, Linux, and macOS, so the experience is consistent across platforms rather than being a native-looking app on one OS and an afterthought on the others. It exposes the same options as the CLI flags below as form fields (file pattern with a browse button — a checkbox next to it switches Browse between picking a single file or a whole folder — delimiter, target with a file browser for custom YAML, and checkboxes for the rest — "First row has column headers" defaults checked in the GUI, unlike the CLI's `-HasHeader`, since most files people pick interactively have one), a Run button, and a log pane showing the same output the CLI would print. When a run finishes, a popup reports each file's column analysis — name, inferred type, and max length for strings, the same report the CLI prints per file — plus a failure count if any file couldn't be processed; dismissing it opens the output folder in the OS file manager. It calls the exact same `ImportHelper.Core` engine as the CLI, so results are identical between the two.
+`ImportHelper.Gui` is an [Avalonia](https://avaloniaui.net/) desktop app — one codebase producing native windows on Windows, Linux, and macOS, so the experience is consistent across platforms rather than being a native-looking app on one OS and an afterthought on the others. It exposes the same options as the CLI flags below as form fields (file pattern with a browse button — a checkbox next to it switches Browse between picking a single file or a whole folder — an optional destination directory with its own folder browser, delimiter, target with a file browser for custom YAML, and checkboxes for the rest — "First row has column headers" defaults checked in the GUI, unlike the CLI's `-HasHeader`, since most files people pick interactively have one), a Run button, and a log pane showing the same output the CLI would print. When a run finishes, a popup reports each file's column analysis — name, inferred type, and max length for strings, the same report the CLI prints per file — plus a failure count if any file couldn't be processed; dismissing it opens the output folder in the OS file manager. It calls the exact same `ImportHelper.Core` engine as the CLI, so results are identical between the two.
 
 Run it with `dotnet run --project src/ImportHelper.Gui`, or use a prebuilt binary from [Releases](https://github.com/RaolinTheDense9476/ImportHelper/releases/latest).
 
@@ -64,6 +64,7 @@ ImportHelper -FilePattern <file_pattern> -Delimiter <delimiter>
 | Option | Description |
 | --- | --- |
 | `-FilePattern <file_pattern>` | **Required.** File pattern with optional wildcards (e.g. `C:\data\*.csv`, `*.txt`, `\\server\share\file.txt`). If no directory is given, the current directory is used. |
+| `-DestinationDirectory <path>` | Where to write generated files (`.sql`, `.fmt`, `bcp_*` copies). Defaults to the same directory as each input file. Created automatically if it doesn't already exist. |
 | `-Delimiter <delimiter>` | **Required.** Field delimiter character (e.g. `,`, `;`, `\|`). Also accepts the literal two-character escapes `\t`, `\n`, `\r`, and `\\` for control characters no shell will type directly. |
 | `-HasHeader` | First row of each file contains column headers, used as column names in the analysis report and generated `CREATE TABLE` script (after sanitization). |
 | `-Encoding <encoding_name>` | Character encoding of the input files (e.g. `UTF-8`, `ASCII`, `UTF-16`, `ISO-8859-1`). Defaults to `UTF-8`. |
@@ -153,6 +154,11 @@ ImportHelper -FilePattern "*.csv" -Delimiter "," -HasHeader -PrepareForBcp "_"
 Generate a `CREATE TABLE` script and bulk-import command for a custom target instead of the built-in `mssql`:
 ```
 ImportHelper -FilePattern "*.csv" -Delimiter "," -HasHeader -Target "path\to\postgres.yaml" -GenerateTsql
+```
+
+Write generated files to a separate output folder instead of alongside the source data:
+```
+ImportHelper -FilePattern "DataFiles\*.csv" -Delimiter "," -HasHeader -DestinationDirectory "C:\staging\output" -GenerateTsql
 ```
 
 ## Notes

@@ -5,6 +5,12 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project uses [Semantic Versioning](https://semver.org/).
 
+## [1.3.0] - 2026-07-16
+
+### Added
+
+- `-DestinationDirectory <path>` (CLI) and a matching "Destination directory" field with a folder browser (GUI): where to write generated files, instead of always assuming the same directory as each input file. Created automatically if it doesn't exist. Left blank/unset, behavior is unchanged.
+
 ## [1.2.0] - 2026-07-16
 
 ### Added
