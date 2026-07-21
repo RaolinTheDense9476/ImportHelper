@@ -1,0 +1,81 @@
+name: Release
+
+# Triggered by pushing a tag like "v1.5.0" (i.e. exactly the `git tag vX.Y.Z
+# && git push origin vX.Y.Z` step in the manual release process). Builds
+# self-contained single-file CLI + GUI binaries for all four platforms from
+# a single runner (dotnet publish -r <rid> just pulls the matching runtime
+# pack from NuGet, no need to actually run on that OS), archives them the
+# same way the manual process does, and creates the GitHub Release with the
+# matching section of CHANGELOG.md as the notes.
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Publish CLI and GUI for all platforms
+        run: |
+          set -euo pipefail
+          for rid in win-x64 linux-x64 osx-x64 osx-arm64; do
+            dotnet publish src/ImportHelper.Cli -c Release -r "$rid" --self-contained true -p:PublishSingleFile=true -p:DebugType=None -o "out/$rid"
+            dotnet publish src/ImportHelper.Gui -c Release -r "$rid" --self-contained true -p:PublishSingleFile=true -p:DebugType=None -o "out/$rid"
+          done
+
+      - name: Archive platform builds
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          for rid in linux-x64 osx-x64 osx-arm64; do
+            tar --owner=0 --group=0 --mode=755 -czf "artifacts/ImportHelper-${GITHUB_REF_NAME}-$rid.tar.gz" -C "out/$rid" .
+          done
+          (cd out/win-x64 && zip -rq "../../artifacts/ImportHelper-${GITHUB_REF_NAME}-win-x64.zip" .)
+
+      - name: Extract this version's CHANGELOG section for release notes
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          awk -v ver="$VERSION" '
+            /^## \[/ {
+              if (found) exit
+              if (index($0, "[" ver "]") > 0) { found=1 }
+              next
+            }
+            found { print }
+          ' CHANGELOG.md > release_notes.md
+
+          if [ ! -s release_notes.md ]; then
+            echo "Warning: no CHANGELOG.md section found for version $VERSION" >&2
+            echo "See CHANGELOG.md for details." > release_notes.md
+          fi
+
+          cat >> release_notes.md << 'EOF'
+
+          ---
+
+          **Downloads below** are self-contained single-file builds for both `ImportHelper` (CLI) and `ImportHelper.Gui` (desktop app) -- no .NET runtime installation required. Each archive includes both executables, `targets/mssql.yaml`, and the native rendering libraries the GUI needs.
+
+          Full changelog: [CHANGELOG.md](https://github.com/RaolinTheDense9476/ImportHelper/blob/main/CHANGELOG.md)
+          EOF
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" artifacts/* \
+            --title "${GITHUB_REF_NAME}" \
+            --notes-file release_notes.md

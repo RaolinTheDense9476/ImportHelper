@@ -5,6 +5,12 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project uses [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- `.github/workflows/release.yml`: pushing a `v*` tag now automatically builds self-contained CLI + GUI binaries for all four platforms, archives them, and creates the GitHub Release with the matching `CHANGELOG.md` section as notes — the same process previously run by hand.
+
 ## [1.4.0] - 2026-07-16
 
 ### Added

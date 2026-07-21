@@ -188,6 +188,15 @@ Yes, I used AI to generate a lot of this. I had written a similar utility years 
 
 See [CHANGELOG.md](CHANGELOG.md).
 
+## Releasing
+
+Pushing a tag matching `v*` (e.g. `v1.5.0`) triggers [`.github/workflows/release.yml`](.github/workflows/release.yml), which builds self-contained single-file CLI + GUI binaries for all four platforms, archives them the same way as the Downloads above, and creates the GitHub Release automatically — using the matching `## [x.y.z]` section of `CHANGELOG.md` as the release notes. So a release is just:
+
+```
+git tag -a v1.5.0 -m "..."
+git push origin v1.5.0
+```
+
 ## License
 
 [MIT](LICENSE)
